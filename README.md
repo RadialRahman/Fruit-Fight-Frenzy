@@ -1,10 +1,10 @@
-# 🍎🍊 Fruit Basket Brawl 🍐🍎
+# 🍎🍊 Fruit-Fight-Frenzy 🍐🍎
 _A 3D two-player memory + mini-game built with PyOpenGL_
 
 ---
 
 ## 🎮 Game Overview
-**Fruit Basket Brawl** is a 3D two-player memory game where players flip fruit tiles on a 3×3 grid to find matching pairs.  
+**Fruit-Fight-Frenzy** is a 3D two-player memory game where players flip fruit tiles on a 3×3 grid to find matching pairs.  
 Matched fruits are collected into baskets to score points.  
 The game ends when all pairs are matched or the timer runs out.  
 
