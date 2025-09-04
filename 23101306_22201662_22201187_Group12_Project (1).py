@@ -43,6 +43,14 @@ timer_limit = 120  # seconds
 block_colors=[]
 matched_time=[]
 
+checking_match = False
+match_check_start_time = 0
+
+paused_start = 0
+total_paused = 0
+
+
+
 
 #initial game state 
 game_state = "initial_reveal"    
@@ -248,18 +256,6 @@ def draw_basket(x, y, z, fruits):
     basket_walls(40,40,30)
     handle((0.9215686274509803, 0.3215686274509804, 0.8235294117647058), 40,4,30,30,60,0)
 
-    handle_color = (0, 0, 0)  
-
-    
-    side_w = 4
-    side_h = 30
-    side_z0 = 30
-    side_z1 = side_z0 + side_h
-    side_y = 0 
-
-   
-    
-
     # Fruit inside basket
     for i, fruit in enumerate(fruits):
         glPushMatrix()
@@ -389,9 +385,12 @@ def setup_fruits():
     global fruit_grid, revealed, matched, removed, selected, scores, current_player
     global game_over, start_time, game_state, reveal_start_time, basket_fruits
     global matched_time, block_colors
+    global paused_start, total_paused
+
 
     def reset_game_state():
         global current_player, game_over
+        global paused_start, total_paused
         total_tiles = GRID_ROWS * GRID_COLS
         revealed[:] = [True] * total_tiles
         matched[:] = [False] * total_tiles
@@ -402,6 +401,9 @@ def setup_fruits():
         basket_fruits[1].clear()
         current_player = 0
         game_over = False
+        paused_start = 0
+        total_paused = 0
+
 
     def generate_fruit_types():
         global pairs_needed
@@ -594,6 +596,8 @@ def setupCamera():
 
 def select_tile(idx):
     global selected, revealed, matched, removed, current_player, scores, game_over
+    global checking_match, match_check_start_time
+
     if matched[idx] or revealed[idx] or removed[idx]:
         return
     if idx in selected:
@@ -602,8 +606,11 @@ def select_tile(idx):
         selected.append(idx)
         revealed[idx] = True
         glutPostRedisplay()
-    if len(selected) == 2:
-        glutTimerFunc(1000, check_match, 0)
+    
+    if len(selected) == 2 and not checking_match:
+        checking_match = True
+        match_check_start_time = time.time()
+
 
 def check_match(value):
     global selected, revealed, matched, removed, current_player, scores, game_over, basket_fruits
@@ -623,7 +630,6 @@ def check_match(value):
         revealed[i2] = False
         current_player = (current_player + 1) % 2
     selected.clear()
-    
     if matched.count(True) == len(matched) - 1:
         game_over = True
     glutPostRedisplay()
@@ -658,10 +664,15 @@ def tile_from_mouse(x, y):
         
 
 def keyboardListener(key, x, y):
-    global ttt_mode, game_over, paused 
+    global ttt_mode, game_over, paused, paused_start, total_paused, start_time
 
-    if key in [b'q', b'Q']: #Exit logic (not entirely working)
-        paused = not paused
+    if key in [b'q', b'Q']: 
+        if not paused:
+            paused = True
+            paused_start = time.time()
+        else:
+            paused = False
+            total_paused += time.time() - paused_start
         glutPostRedisplay()
         return
 
@@ -727,39 +738,67 @@ def mouseListener(button, state, x, y):
     glutPostRedisplay()
 
 def idle():
-    global game_over, game_state, revealed, reveal_start_time, paused, matched, removed, matched_time, basket_fruits, fruit_grid, current_player
-    
+    global game_over, game_state, revealed, reveal_start_time, paused, matched, removed
+    global matched_time, basket_fruits, fruit_grid, current_player
+    global checking_match, match_check_start_time
+
     if paused:  
         return 
-    
+
+    now = time.time()
+
     def handle_initial_reveal():
         global game_state, revealed, reveal_start_time
         if game_state == "initial_reveal":
-            if time.time() - reveal_start_time > 2.0:
+            if now - reveal_start_time > 2.0:
                 revealed[:] = [False] * (GRID_ROWS * GRID_COLS)
                 game_state = "playing"
 
     def check_game_timer():
         global game_over
-        if not game_over and time.time() - start_time > timer_limit:
+        if not game_over and now - start_time > timer_limit:
             game_over = True
 
     def process_matched_fruits():
         global matched, removed, matched_time, basket_fruits, current_player
-        now = time.time()
         for idx in range(GRID_ROWS * GRID_COLS):
             if matched[idx] and not removed[idx] and matched_time[idx] is not None:
                 if now - matched_time[idx] > 1.0:
                     removed[idx] = True
                     basket_fruits[current_player].append(fruit_grid[idx])
 
+    def handle_match_check():
+        global selected, revealed, matched, removed, current_player, scores
+        global checking_match, match_check_start_time, matched_time, game_over
+
+        if checking_match and now - match_check_start_time >= 1.0:
+            checking_match = False
+            if len(selected) < 2:
+                return
+            i1, i2 = selected
+            if fruit_grid[i1] == fruit_grid[i2]:
+                matched[i1] = True
+                matched[i2] = True
+                matched_time[i1] = now
+                matched_time[i2] = now
+                scores[current_player] += 1
+            else:
+                revealed[i1] = False
+                revealed[i2] = False
+                current_player = (current_player + 1) % 2
+            selected.clear()
+            if matched.count(True) == len(matched) - 1:
+                game_over = True
+
     handle_initial_reveal()
     check_game_timer()
     process_matched_fruits()
-    
+    handle_match_check()
+
     glutPostRedisplay()
 
-def get_game_result_message(): 
+
+def get_game_result_message(): #message is shown when player wins
     p1 = scores[0]
     p2 = scores[1]
     if p1 ==  p2:
@@ -798,10 +837,13 @@ def showScreen():
 
     def draw_timer():
         if not game_over:
-            time_left = max(0, int(timer_limit - (time.time() - start_time)))
+            now = time.time()
+            elapsed = now - start_time - total_paused
+            time_left = max(0, int(timer_limit - elapsed))
             mins, secs = divmod(time_left, 60)
             timer_str = f"Time Left: {mins:02d}:{secs:02d}"
             draw_text(800, 770, timer_str, GLUT_BITMAP_HELVETICA_18)
+
 
     def draw_game_over():
         if game_over:
